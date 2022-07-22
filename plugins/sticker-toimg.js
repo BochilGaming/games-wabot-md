@@ -1,30 +1,44 @@
-import { spawn } from 'child_process'
-import { format } from 'util'
+import * as fs from 'fs'
+import { exec } from 'child_process'
 
-let handler = async (m, { conn, usedPrefix, command }) => {
-    if (!global.support.convert &&
-        !global.support.magick &&
-        !global.support.gm) return handler.disabled = true // Disable if doesnt support
-    const notStickerMessage = `Reply sticker with command *${usedPrefix + command}*`
-    if (!m.quoted) throw notStickerMessage
-    let q = m.quoted
-    if (/sticker/.test(q.mediaType)) {
-        let sticker = await q.download()
-        if (!sticker) throw sticker
-        let bufs = []
-        const [_spawnprocess, ..._spawnargs] = [...(global.support.gm ? ['gm'] : global.support.magick ? ['magick'] : []), 'convert', 'webp:-', 'png:-']
-        let im = spawn(_spawnprocess, _spawnargs)
-        im.on('error', e => m.reply(format(e)))
-        im.stdout.on('data', chunk => bufs.push(chunk))
-        im.stdin.write(sticker)
-        im.stdin.end()
-        im.on('exit', () => {
-            conn.sendFile(m.chat, Buffer.concat(bufs), 'image.png', author, m)
-        })
-    } else throw notStickerMessage
+let handler = async (m, { conn }) => {
+	if (m.quoted && /sticker/.test(m.quoted.mtype) && !m.quoted.isAnimated) {
+		let img = await m.quoted.download()
+		await conn.sendMessage(m.chat, { image: img, jpegThumbnail: img }, { quoted: m })
+	} else if (m.quoted && /sticker/.test(m.quoted.mtype) && m.quoted.isAnimated) {
+		await m.reply('Loading..')
+		let img = await m.quoted.download()
+		let out = await webpToVideo(img)
+		await conn.sendMessage(m.chat, { video: out, gifPlayback: /gif/i.test(m.text), gifAttribution: ~~(Math.random() * 2) }, { quoted: m })
+	} else throw 'Reply a sticker!'
 }
-handler.help = ['toimg (reply)']
+handler.help = ['toimg']
 handler.tags = ['sticker']
-handler.command = /^toimg$/i
+handler.command = /^to(img)$/i
 
 export default handler
+
+function webpToVideo(bufferImage) {
+	return new Promise((resolve, reject) => {
+		try {
+			let pathFile = "./tmp/" + ~~(Math.random() * 1000000 + 1) + ".webp"
+			fs.writeFileSync(pathFile, bufferImage)
+			exec(`convert ${pathFile} ${pathFile}.gif`, (error, stdout, stderr) => {
+				exec(`ffmpeg -i ${pathFile}.gif -movflags faststart -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" ${pathFile}.mp4`, (error, stdout, stderr) => {
+					if (!fs.existsSync(pathFile + ".gif") || !fs.existsSync(pathFile + ".mp4")) {
+						reject("Failed convert file!")
+						fs.unlinkSync(pathFile)
+						return
+					}
+					let videoBuffer = fs.readFileSync(pathFile + ".mp4")
+					fs.unlinkSync(pathFile)
+					fs.unlinkSync(pathFile + ".gif")
+					fs.unlinkSync(pathFile + ".mp4")
+					resolve(videoBuffer)
+				})
+			})
+		} catch(e) {
+			reject(e)
+		}
+	})
+}
