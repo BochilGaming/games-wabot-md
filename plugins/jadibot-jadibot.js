@@ -1,11 +1,16 @@
-// TODO: fix jadibot
-
-import Connection from '../lib/connection.js'
-import Store from '../lib/store.js'
-import qrcode from 'qrcode'
+import fs from 'fs'
+import fse from 'fs-extra'
+import { toBuffer } from 'qrcode'
 import ws from 'ws'
+import Connection from './lib/connection.js'
+import storeSystem from './lib/store.js'
+import { execSync } from 'child_process'
 
-const { DisconnectReason } = await import('@adiwajshing/baileys')
+const {
+DisconnectReason, 
+areJidsSameUser, 
+delay 
+} = await import("@adiwajshing/baileys")
 
 let handler = async (m, { conn: _conn, args, usedPrefix, command, isOwner }) => {
     /** @type {import('../lib/connection').Socket} */
